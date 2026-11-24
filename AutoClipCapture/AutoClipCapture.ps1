@@ -6473,18 +6473,43 @@ $hotkeyAction = {
         try {
             $target = $null
             if ($pipeline.UseFocusedWindow) {
-                # Assume the window that already has focus is the
-                # target - no click-to-select or confirmation step.
+                # Use the focused window only when it is actually Host
+                # On-Demand. The AutoClipCapture console can remain in
+                # front after startup; sending Ctrl+C to that console
+                # would terminate the batch job instead of copying HOD.
+                $terminalTitlePrefix = '3270-display(32 regels)'
                 $fgHandle = [Win32]::GetForegroundWindow()
-                if ($fgHandle -eq [IntPtr]::Zero) {
-                    Write-Host "[AutoClipCapture] [$($pipeline.Name)] Start cancelled (no focused window found)." -ForegroundColor Yellow
-                    return
-                }
                 $sb = New-Object System.Text.StringBuilder 256
-                [void][Win32]::GetWindowText($fgHandle, $sb, $sb.Capacity)
+                if ($fgHandle -ne [IntPtr]::Zero) { [void][Win32]::GetWindowText($fgHandle, $sb, $sb.Capacity) }
                 $fgTitle = $sb.ToString()
-                if ([string]::IsNullOrWhiteSpace($fgTitle)) { $fgTitle = "(untitled window)" }
-                $target = [pscustomobject]@{ Handle = $fgHandle; Title = $fgTitle }
+                if ($fgHandle -ne [IntPtr]::Zero -and $fgTitle.StartsWith($terminalTitlePrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $target = [pscustomobject]@{ Handle = $fgHandle; Title = $fgTitle }
+                } else {
+                    $terminalTargets = @(
+                        Get-Process -ErrorAction SilentlyContinue | ForEach-Object {
+                            try {
+                                $windowTitle = [string]$_.MainWindowTitle
+                                $windowHandle = [IntPtr]$_.MainWindowHandle
+                                if ($windowHandle -ne [IntPtr]::Zero -and $windowTitle.StartsWith($terminalTitlePrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                                    [pscustomobject]@{ Handle = $windowHandle; Title = $windowTitle; ProcessId = $_.Id }
+                                }
+                            } catch {}
+                        } | Sort-Object ProcessId -Unique
+                    )
+                    if ($terminalTargets.Count -eq 1) {
+                        $target = $terminalTargets[0]
+                        Write-Host "[AutoClipCapture] [$($pipeline.Name)] Foreground window '$fgTitle' isn't Host On-Demand; auto-selected the visible terminal '$($target.Title)'." -ForegroundColor Cyan
+                    } else {
+                        $reason = if ($terminalTargets.Count -eq 0) {
+                            "No visible window titled '$terminalTitlePrefix*' was found. Focus Host On-Demand and try again. No keys were sent."
+                        } else {
+                            "More than one Host On-Demand window is open. Focus the intended terminal and try again. No keys were sent."
+                        }
+                        Write-Host "[AutoClipCapture] [$($pipeline.Name)] $reason" -ForegroundColor Red
+                        [void][System.Windows.Forms.MessageBox]::Show($reason, 'Host On-Demand window not selected', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+                        return
+                    }
+                }
             } else {
                 while ($true) {
                     $picked = Select-TargetWindow
@@ -6499,6 +6524,13 @@ $hotkeyAction = {
                     }
                     Write-Host "[AutoClipCapture] [$($pipeline.Name)] Selection rejected - click the correct window." -ForegroundColor Yellow
                 }
+            }
+
+            if ($null -ne $pipeline.Screen1Select -and -not $target.Title.StartsWith('3270-display(32 regels)', [System.StringComparison]::OrdinalIgnoreCase)) {
+                $reason = "The selected window '$($target.Title)' isn't an IBM Host On-Demand 3270 terminal. No keys were sent."
+                Write-Host "[AutoClipCapture] [$($pipeline.Name)] $reason" -ForegroundColor Red
+                [void][System.Windows.Forms.MessageBox]::Show($reason, 'Invalid pipeline target', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+                return
             }
 
             $useComponentList = ($null -ne $pipeline.ComponentList) -and [bool]$pipeline.ComponentList.Enabled
