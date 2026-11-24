@@ -1159,7 +1159,7 @@ function Invoke-Screen1CalibrationTool {
     param(
         $Pipeline,
         [IntPtr]$TargetHandle = [IntPtr]::Zero,
-        [string]$RowType = 'COB'
+        [string]$RowType = ''
     )
 <#
 =====================================================================
@@ -1193,7 +1193,7 @@ function Invoke-Screen1CalibrationTool {
       moving down the page).
    4. Works out OriginX/OriginY from that rectangle's actual top-left
       corner.
-   5. Copies the CURRENT screen (Ctrl+C) to verify a COB data row is
+   5. Copies the CURRENT screen (Ctrl+C) to verify a selected-Type data row is
       present. Its screen row is configured as row 6 (0-based), and the
       selection field is configured as columns 1-2 (0-based). The real pipeline
       (AutoClipCaptureSqlPipelineScreen1.ps1) no longer reads page
@@ -1209,7 +1209,7 @@ function Invoke-Screen1CalibrationTool {
       wrong, e.g. a non-black terminal color scheme).
 
  NOTE: make sure the terminal is showing a REPOSITORY LIST page with
- at least one visible "COB" row before running this. The known first
+ at least one visible row matching the chosen Type before running this. The known first
  data row is terminal screen row 6 (counting from 0 at the top).
 
  Run it via "StartAutoClipCapture.bat Calibrate", via the -Calibrate
@@ -1411,7 +1411,7 @@ function Find-DarkRectangle {
 }
 
 # Mirrors AutoClipCaptureSqlPipelineScreen1.ps1's Get-Screen1DataRows:
-# finds the first line that actually has "COB" printed on it, and the
+# finds the first line that actually has the selected Type printed on it, and the
 # 0-based (line, column) it's at on THIS screen - never a hardcoded
 # row/column guess. This is what makes the preview below test the
 # exact same thing the real pipeline will click on, instead of a
@@ -1420,11 +1420,13 @@ function Get-FirstCobMatch {
     param([string]$Text, [string]$RowType = 'COB')
     if ([string]::IsNullOrEmpty($Text)) { return $null }
     $lines = $Text -split "`r`n|`n|`r"
-    $rowTypePattern = '\b' + [regex]::Escape($RowType.Trim()) + '\b'
+    # Require a concrete component name after the Type value. This skips
+    # filter rows such as "TLSD DQ*" and calibrates from actual data rows.
+    $rowTypePattern = '\b' + [regex]::Escape($RowType.Trim()) + '\b\s+(?<name>[A-Za-z0-9@#$._-]+)(?=\s|$)'
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $m = [regex]::Match($lines[$i], $rowTypePattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-        if ($m.Success) {
-            return [pscustomobject]@{ LineIndex = $i; ColIndex = $m.Index; LineText = $lines[$i] }
+        if ($m.Success -and $m.Groups['name'].Value -notmatch '[*?]') {
+            return [pscustomobject]@{ LineIndex = $i; ColIndex = $m.Index; LineText = $lines[$i]; ComponentName = $m.Groups['name'].Value }
         }
     }
     return $null
@@ -1481,9 +1483,20 @@ if ($null -ne $Pipeline) {
     $chosenPipeline = $targets[$parsedPipelineIndex]
 }
 
-# Calibrate the actual selection-field column directly. The COB row is
+if ([string]::IsNullOrWhiteSpace($RowType)) { $RowType = [string]$chosenPipeline.Screen1Select.RowType }
+if ([string]::IsNullOrWhiteSpace($RowType)) { $RowType = 'COB' }
+$RowType = $RowType.Trim().ToUpperInvariant()
+if ($RowType -notmatch '^[A-Z0-9@#$._-]{1,8}$') {
+    Write-Host "Invalid repository Type value '$RowType'. Nothing changed." -ForegroundColor Red
+    return $false
+}
+$chosenPipeline.Screen1Select.RowType = $RowType
+Write-Host "Calibration will search for Type '$RowType' data rows." -ForegroundColor Cyan
+
+# Calibrate the actual selection-field column directly. The selected
+# repository Type row is
 # still used as a known row anchor, but the field's horizontal position
-# is not assumed to be a fixed number of cells from the COB text.
+# is not assumed to be a fixed number of cells from the Type text.
 $clickColumnOffset = 0
 $chosenPipeline.Screen1Select.ClickColumnOffset = $clickColumnOffset
 
@@ -1540,13 +1553,13 @@ if ($null -eq $box -or ($box.Right - $box.Left) -lt 100 -or ($box.Bottom - $box.
     return $false
 }
 
-# ---- Find the REAL first "COB" row on whatever screen is showing
+# ---- Find the REAL first matching repository data row on whatever screen is showing
 # right now, instead of assuming a fixed row/column - this is the part
 # that used to be hardcoded (cobColumn=5, firstDataRow=7) and could be
 # wrong for a given screen's actual layout. Make sure your terminal is
-# currently showing a REPOSITORY LIST page with at least one COB row
+# currently showing a REPOSITORY LIST page with at least one matching row
 # visible before continuing. ----
-Write-Host "`nCopying the current screen to find the real first 'COB' row..." -ForegroundColor Cyan
+Write-Host "`nCalibrating for REPOSITORY LIST Type '$RowType'. Copying the screen to find its first data row..." -ForegroundColor Cyan
 [void][CalibNative4]::SetForegroundWindow($targetHandle)
 Start-Sleep -Milliseconds 300
 [System.Windows.Forms.SendKeys]::SendWait('^c')
@@ -1562,8 +1575,8 @@ for ($try = 0; $try -lt 10; $try++) {
     } catch {}
 }
 
-$cobMatch = Get-FirstCobMatch -Text $copiedText -RowType $RowType
-if ($null -eq $cobMatch) {
+$rowMatch = Get-FirstCobMatch -Text $copiedText -RowType $RowType
+if ($null -eq $rowMatch) {
     Write-Host "`nCouldn't find any line with '$RowType' on the current screen." -ForegroundColor Red
     Write-Host "Navigate the terminal to a REPOSITORY LIST page that actually shows $RowType rows, then run this again." -ForegroundColor Red
     return $false
@@ -1573,16 +1586,16 @@ $clipboardWidths = @($clipboardLines | ForEach-Object { $_.Length } | Sort-Objec
 $clipboardMinWidth = ($clipboardLines | ForEach-Object { $_.Length } | Measure-Object -Minimum).Minimum
 $clipboardMaxWidth = ($clipboardLines | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum
 Write-Host ("  Clipboard clue: {0} lines, line widths {1}-{2} characters ({3} distinct widths)." -f $clipboardLines.Count, $clipboardMinWidth, $clipboardMaxWidth, $clipboardWidths.Count) -ForegroundColor DarkCyan
-Write-Host ("  '{0}' appears in clipboard line {1}, column {2}: `"{3}`"" -f $RowType, $cobMatch.LineIndex, $cobMatch.ColIndex, $cobMatch.LineText.Trim()) -ForegroundColor Cyan
+Write-Host ("  Type '{0}', component '{1}' appears in clipboard line {2}, column {3}: `"{4}`"" -f $RowType, $rowMatch.ComponentName, $rowMatch.LineIndex, $rowMatch.ColIndex, $rowMatch.LineText.Trim()) -ForegroundColor Cyan
 # This Host On-Demand session is configured as 80 columns by 32 rows.
-# The first COB data row is visible screen row 6 (0-based); clipboard
+# The first matching data row is visible screen row 6 (0-based); clipboard
 # line indices remain diagnostic only and may omit leading screen rows.
 $cols = 80
 $rows = 32
 $realLineIndex = 6
 $calibratedSelectionColumn = 1
 $selectionFieldLastColumn = 2
-Write-Host "Using configured terminal grid: 80 columns x 32 rows; first COB data row is screen row 6 (0-based)." -ForegroundColor Cyan
+Write-Host ("Using configured terminal grid: 80 columns x 32 rows; first {0} data row is screen row 6 (0-based)." -f $RowType) -ForegroundColor Cyan
 Write-Host "Using selection field columns 1-2 (0-based); click target is column 1." -ForegroundColor Cyan
 Write-Host "Clipboard dimensions above are diagnostic only and are not used as screen coordinates." -ForegroundColor DarkGray
 $boxWidth  = $box.Right - $box.Left
@@ -1616,7 +1629,7 @@ if ($confirmX -lt ($box.Left + 0.5) -or $confirmX -ge ($box.Right - 0.5) -or $co
 [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point($pt.X, $pt.Y)
 
 Write-Host ""
-Write-Host "Pointer moved to column 1 inside the two-column selection field (columns 1-2) on the known first COB data row." -ForegroundColor Cyan
+Write-Host ("Pointer moved to column 1 inside the two-column selection field (columns 1-2) on the known first {0} data row." -f $RowType) -ForegroundColor Cyan
 Write-Host "Look at the terminal - does it land there? ENTER to save, Esc to cancel." -ForegroundColor Cyan
 Write-Host "(Reminder: this assumes 100% display scaling and today's font/window size." -ForegroundColor DarkGray
 Write-Host " Recalibrate if either changes later.)" -ForegroundColor DarkGray
@@ -1651,8 +1664,8 @@ foreach ($geometry in @(
 }
 
 # Save the known screen-row anchor and selection-field column. Each
-# repository page's copied text identifies which rows contain COB; the
-# first COB line is mapped to this screen-row anchor, not to clipboard
+# repository page's copied text identifies which rows contain the selected Type;
+# its first matching line is mapped to this screen-row anchor, not to clipboard
 # line 0. ClickColumnOffset is zero because SelectionColumnIndex is the
 # actual selection field.
 foreach ($prop in @(
@@ -1666,7 +1679,7 @@ foreach ($prop in @(
     }
 }
 
-$calibNote = "Auto-calibrated {0} using detected terminal bounds, an 80x32 session grid, first COB row 6 (0-based), and selection field columns 1-2. Clipboard dimensions were diagnostic only. Recalibrate if display scaling, terminal size, font, or layout changes." -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+$calibNote = "Auto-calibrated {0} using detected terminal bounds, an 80x32 session grid, first {1} row 6 (0-based), and selection field columns 1-2. Clipboard dimensions were diagnostic only. Recalibrate if display scaling, terminal size, font, or layout changes." -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $RowType
 if (-not ($chosenPipeline.Screen1Select.PSObject.Properties.Name -contains 'CalibrationNote')) {
     $chosenPipeline.Screen1Select | Add-Member -NotePropertyName CalibrationNote -NotePropertyValue $calibNote -Force
 } else {
@@ -1704,7 +1717,28 @@ if ($Calibrate) {
     # -Calibrate was passed: run calibration in this process and stop -
     # do not start the capture relay. The calibration tool sets DPI
     # awareness before it takes the screenshot.
-    [void](Invoke-Screen1CalibrationTool)
+    $calibrationRowType = 'COB'
+    if (Test-Path -LiteralPath $ConfigPath) {
+        try {
+            $calibrationConfig = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
+            $configuredPipeline = @($calibrationConfig.Pipelines | Where-Object { $null -ne $_.Screen1Select } | Select-Object -First 1)
+            $configuredRowType = if ($configuredPipeline.Count -gt 0) { [string]$configuredPipeline[0].Screen1Select.RowType } else { '' }
+            if (-not [string]::IsNullOrWhiteSpace($configuredRowType)) {
+                $calibrationRowType = $configuredRowType.Trim().ToUpperInvariant()
+            }
+        } catch {
+            Write-Host "Couldn't read the configured repository row type; defaulting to COB. $_" -ForegroundColor Yellow
+        }
+    }
+    $enteredRowType = Read-Host "Repository Type value to calibrate on [$calibrationRowType]"
+    if (-not [string]::IsNullOrWhiteSpace($enteredRowType)) {
+        $calibrationRowType = $enteredRowType.Trim().ToUpperInvariant()
+    }
+    if ($calibrationRowType -notmatch '^[A-Z0-9@#$._-]{1,8}$') {
+        Write-Host "Invalid Type value '$calibrationRowType'. Use 1 to 8 letters, numbers, or @ # $ . _ -." -ForegroundColor Red
+        return
+    }
+    [void](Invoke-Screen1CalibrationTool -RowType $calibrationRowType)
     return
 }
 
@@ -5312,9 +5346,13 @@ function Invoke-Screen1CalibrationNow {
     param(
         $Pipeline,
         [IntPtr]$TargetHandle = [IntPtr]::Zero,
-        [string]$RowType = 'COB'
+        [string]$RowType = ''
     )
 
+    if ([string]::IsNullOrWhiteSpace($RowType) -and $null -ne $Pipeline.Screen1Select) {
+        $RowType = [string]$Pipeline.Screen1Select.RowType
+    }
+    if ([string]::IsNullOrWhiteSpace($RowType)) { $RowType = 'COB' }
     $calibrationSucceeded = Invoke-Screen1CalibrationTool -Pipeline $Pipeline -TargetHandle $TargetHandle -RowType $RowType
     if (-not $calibrationSucceeded) { return }
 
@@ -5355,15 +5393,21 @@ function Invoke-Screen1CalibrationNow {
 # being ready) just means you'll be asked again the first time that
 # pipeline's hotkey is actually pressed (Show-Screen1CalibrationPrompt
 # further down handles that case). Make sure the terminal is already
-# open on a REPOSITORY LIST page with a COB row visible before
+# open on a REPOSITORY LIST page with the chosen Type row visible before
 # answering Yes here - that's what calibration needs to measure
 # against. ----
 foreach ($p in $PipelineHotkeyMap.Values) {
     if ($null -ne $p.Screen1Select -and -not (Test-Screen1Calibrated -Screen1Select $p.Screen1Select)) {
         Write-Host "[AutoClipCapture] [$($p.Name)] Screen1Select isn't calibrated yet." -ForegroundColor Yellow
         if (Show-Screen1CalibrationPrompt -PipelineName $p.Name) {
+            $calibrationTypeChoice = Select-RepositoryRowType -DefaultType ([string]$p.Screen1Select.RowType)
+            if (-not $calibrationTypeChoice.Accepted) {
+                Write-Host "[AutoClipCapture] [$($p.Name)] Calibration type selection cancelled; calibration skipped." -ForegroundColor Yellow
+                continue
+            }
+            $p.Screen1Select.RowType = [string]$calibrationTypeChoice.Type
             Write-Host "[AutoClipCapture] [$($p.Name)] Launching Screen1 calibration..." -ForegroundColor Cyan
-            Invoke-Screen1CalibrationNow -Pipeline $p
+            Invoke-Screen1CalibrationNow -Pipeline $p -RowType $calibrationTypeChoice.Type
             if (Test-Screen1Calibrated -Screen1Select $p.Screen1Select) {
                 Write-Host "[AutoClipCapture] [$($p.Name)] Calibrated." -ForegroundColor Green
             } else {
