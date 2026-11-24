@@ -91,6 +91,7 @@
                                                 "CharWidthPx":  6.02,
                                                 "CharHeightPx":  32.19,
                                                 "ClickColumnOffset":  -2,
+                                                "RowType":  "COB",
                                                 "SelectionText":  "B",
                                                 "RowsPerPage":  25,
                                                 "StartRowOffset":  0,
