@@ -1,0 +1,168 @@
+﻿{
+    "LogFile":  "CapturedOutput.txt",
+    "CopyDelayMs":  250,
+    "AfterActionKeyDelayMs":  250,
+    "TimerTickMs":  250,
+    "SkipRowsStart":  3,
+    "SkipRowsEnd":  3,
+    "ActionKeyDisplay":  "F8",
+    "ActionKeyToken":  "{F8}",
+    "DupDetectEnabled":  true,
+    "DupDetectThreshold":  0.995,
+    "ToggleHotkey":  {
+                         "Modifiers":  6,
+                         "Key":  65,
+                         "Display":  "Ctrl+Shift+A",
+                         "RequireRightModifier":  false
+                     },
+    "ExitHotkey":  {
+                       "Modifiers":  6,
+                       "Key":  81,
+                       "Display":  "Ctrl+Shift+Q",
+                       "RequireRightModifier":  false
+                   },
+    "F3Hotkey":  {
+                     "Modifiers":  5,
+                     "Key":  188,
+                     "Display":  "Alt+\u003c",
+                     "RequireRightModifier":  false
+                 },
+    "PipelineStepConfirmEnabled":  true,
+    "StepConfirmHotkey":  {
+                              "Modifiers":  0,
+                              "Key":  39,
+                              "Display":  "Right Arrow"
+                          },
+    "ResultOverlayDurationMs":  4000,
+    "Modes":  [
+                  {
+                      "Id":  "sql-search",
+                      "Name":  "SQL Search",
+                      "Enabled":  true,
+                      "Hotkey":  {
+                                     "Modifiers":  5,
+                                     "Key":  190,
+                                     "Display":  "Alt+\u003e",
+                                     "RequireRightModifier":  false
+                                 },
+                      "UseFocusedWindow":  true,
+                      "ActionKeyToken":  "{F5}",
+                      "ActionKeyDisplay":  "F5",
+                      "FoundText":  "EXEC SQL",
+                      "FoundOverlayText":  "SQL FOUND",
+                      "NotFoundText":  "No CHARS \u0027sql\u0027 found",
+                      "TerminalText":  "*Bottom of data reached*",
+                      "NotFoundOverlayText":  "NO SQL FOUND",
+                      "MaxIterations":  500
+                  }
+              ],
+    "Pipelines":  [
+                      {
+                          "Id":  "cobol-pipeline",
+                          "Name":  "COBOL Full Scan",
+                          "Enabled":  true,
+                          "Hotkey":  {
+                                         "Modifiers":  6,
+                                         "Key":  77,
+                                         "Display":  "Ctrl+Shift+M",
+                                         "RequireRightModifier":  false
+                                     },
+                          "StepHotkey":  {
+                                             "Modifiers":  6,
+                                             "Key":  78,
+                                             "Display":  "Ctrl+Shift+N",
+                                             "RequireRightModifier":  false
+                                         },
+                          "UseFocusedWindow":  true,
+                          "ComponentList":  {
+                                                "Enabled":  false,
+                                                "NextActionToken":  "{F8}",
+                                                "NextActionDisplay":  "F8",
+                                                "SkipRowsStart":  5,
+                                                "SkipRowsEnd":  3,
+                                                "DupDetectThreshold":  0.995,
+                                                "MaxPages":  500,
+                                                "OutputFileName":  "pipeline_component_list.txt",
+                                                "EndOfListText":  "Bottom of List"
+                                            },
+                          "Screen1Select":  {
+                                                "OriginX":  3,
+                                                "OriginY":  137,
+                                                "CharWidthPx":  6.02,
+                                                "CharHeightPx":  32.19,
+                                                "ClickColumnOffset":  -2,
+                                                "SelectionText":  "B",
+                                                "RowsPerPage":  25,
+                                                "StartRowOffset":  0,
+                                                "PageNextToken":  "{F8}",
+                                                "PageNextDisplay":  "F8",
+                                                "EndOfListText":  "Bottom of List",
+                                                "DupDetectThreshold":  0.995,
+                                                "MaxPages":  500,
+                                                "MaxRowRetries":  3,
+                                                "InvalidCommandText":  "Invalid REPOLIST Command",
+                                                "LogScreen2Text":  true,
+                                                "OutputFileName":  "pipeline_component_versions.txt",
+                                                "CalibrationNote":  "Auto-calibrated 2026-09-15 23:28:30 assuming 100% Windows display scaling. Recalibrate if display scaling, the terminal\u0027s font size, or (if the emulator scales its content) the window size changes."
+                                            },
+                          "Component":  {
+                                            "ZoomActionToken":  "{ENTER}",
+                                            "ZoomActionDisplay":  "Enter",
+                                            "NextActionToken":  "{DOWN}",
+                                            "NextActionDisplay":  "Down",
+                                            "UnavailableText":  "unavailable",
+                                            "MaxItems":  100,
+                                            "LabelPattern":  "\\(([A-Za-z]{2}[A-Za-z0-9]+)\\)"
+                                        },
+                          "Environment":  {
+                                              "ZoomActionToken":  "{ENTER}",
+                                              "ZoomActionDisplay":  "Enter",
+                                              "NextActionToken":  "{DOWN}",
+                                              "NextActionDisplay":  "Down",
+                                              "UnavailableText":  "Component unavailable",
+                                              "MaxItems":  20,
+                                              "LabelPattern":  "\\(([A-Za-z]{2}[A-Za-z0-9]+)\\)"
+                                          },
+                          "Sql":  {
+                                      "ActionKeyToken":  "{F5}",
+                                      "ActionKeyDisplay":  "F5",
+                                      "FoundText":  "EXEC SQL",
+                                      "FoundOverlayText":  "SQL FOUND",
+                                      "NotFoundText":  "No CHARS \u0027sql\u0027 found",
+                                      "TerminalText":  "*Bottom of data reached*",
+                                      "NotFoundOverlayText":  "NO SQL FOUND",
+                                      "MaxIterations":  500
+                                  }
+                      }
+                  ],
+    "PipelineTimingsMs":  {
+        "RepositoryList":  {
+            "BeforeClickMs":  0,
+            "AfterClickMs":  1000,
+            "AfterSelectionLetterMs":  1000,
+            "AfterEnterMs":  1000,
+            "AfterClipboardCopyMs":  1000,
+            "InitialScanAfterClipboardCopyMs":  250,
+            "AfterPageKeyMs":  1000,
+            "AfterDeleteMs":  1000,
+            "AfterF3Ms":  1000
+        },
+        "ComponentVersion":  {
+            "BeforeClickMs":  0,
+            "AfterClickMs":  1000,
+            "PauseAfterSBeforeEnterMs":  500,
+            "AfterEnterMs":  1000,
+            "AfterClipboardCopyMs":  1000,
+            "AfterF3Ms":  1000
+        },
+        "SourceCode":  {
+            "AfterActionKeyMs":  250,
+            "AfterClipboardCopyMs":  250,
+            "AfterF3Ms":  1000
+        },
+        "ComponentList":  {
+            "AfterPageKeyMs":  250,
+            "AfterClipboardCopyMs":  250
+        }
+    }
+}
