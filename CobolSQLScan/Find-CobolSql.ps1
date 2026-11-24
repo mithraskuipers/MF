@@ -1,11 +1,10 @@
-﻿#Requires -Version 5.1
-# Scans a folder of COBOL sources and writes an MD table: which files contain EXEC SQL.
+﻿# Scans a folder of COBOL sources and writes an MD table: which files contain EXEC SQL.
 
 $ErrorActionPreference = 'Stop'
 
 # ---- settings ----
 $Recurse    = $false                 # set to $true to include subfolders
-$OutputName = 'SQL_SCAN_RESULT.md'
+$OutputName = 'SQL_SCAN_RESULT_' + (Get-Date -Format 'yyyyMMdd_HHmmss') + '.md'
 $SkipExt    = @('.md')               # never scan these (keeps the result file out of the scan)
 # ------------------
 
@@ -64,15 +63,31 @@ try {
     $rows.Add('| SRC_FILE | SQL_PRESENT? |')
     $rows.Add('|----------|--------------|')
 
-    $yes = 0; $errs = 0
+    # One row per base name (extension removed). If the same base name occurs more than once
+    # (e.g. A.cbl and A.txt), the rows merge: Y wins, then ERR, then N.
+    $status = @{}
+    $errs = 0
     foreach ($f in $files) {
-        $name = $f.FullName.Substring($folder.Length).TrimStart('\', '/')
+        $rel  = $f.FullName.Substring($folder.Length).TrimStart('\', '/')
+        $name = $rel.Substring(0, $rel.Length - $f.Extension.Length)
+        if ($name -eq '') { $name = $rel }
         try {
-            if (Test-HasExecSql $f.FullName) { $flag = 'Y'; $yes++ } else { $flag = 'N' }
+            if (Test-HasExecSql $f.FullName) { $flag = 'Y' } else { $flag = 'N' }
         } catch {
             $flag = 'ERR'; $errs++
-            Write-Warning "Could not read $name : $($_.Exception.Message)"
+            Write-Warning "Could not read $rel : $($_.Exception.Message)"
         }
+        if (-not $status.ContainsKey($name)) {
+            $status[$name] = $flag
+        } elseif ($flag -eq 'Y' -or ($flag -eq 'ERR' -and $status[$name] -eq 'N')) {
+            $status[$name] = $flag
+        }
+    }
+
+    $yes = 0
+    foreach ($name in ($status.Keys | Sort-Object)) {
+        $flag = $status[$name]
+        if ($flag -eq 'Y') { $yes++ }
         $rows.Add('| ' + $name.Replace('|', '\|') + ' | ' + $flag + ' |')
     }
 
@@ -88,6 +103,7 @@ try {
 
     Write-Host ''
     Write-Host "Files scanned : $($files.Count)"
+    Write-Host "Unique names  : $($status.Count)"
     Write-Host "With EXEC SQL : $yes"
     if ($errs -gt 0) { Write-Host "Unreadable    : $errs" }
     Write-Host "Result file   : $out"
